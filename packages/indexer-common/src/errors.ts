@@ -84,6 +84,8 @@ export enum IndexerErrorCode {
   IE071 = 'IE071',
   IE072 = 'IE072',
   IE073 = 'IE073',
+  IE074 = 'IE074',
+  IE075 = 'IE075',
 }
 
 export const INDEXER_ERROR_MESSAGES: Record<IndexerErrorCode, string> = {
@@ -95,7 +97,7 @@ export const INDEXER_ERROR_MESSAGES: Record<IndexerErrorCode, string> = {
   IE006: 'Failed to cross-check allocation state with contracts',
   IE007: 'Failed to check for network pause',
   IE008: 'Failed to check operator status for indexer',
-  IE009: 'Failed to query subgraph deployments worth indexing',
+  IE009: 'Failed to query subgraph deployments',
   IE010: 'Failed to query indexer allocations',
   IE011: 'Failed to query claimable indexer allocations',
   IE012: 'Failed to register indexer',
@@ -161,6 +163,8 @@ export const INDEXER_ERROR_MESSAGES: Record<IndexerErrorCode, string> = {
   IE071: 'Add Epoch subgraph support for non-protocol chains',
   IE072: 'Failed to execute batch tx (contract: staking)',
   IE073: 'Failed to query subgraph features from indexing statuses endpoint',
+  IE074: 'Failed to deploy subgraph: network not supported',
+  IE075: 'Failed to connect to network contracts',
 }
 
 export type IndexerErrorCause = unknown

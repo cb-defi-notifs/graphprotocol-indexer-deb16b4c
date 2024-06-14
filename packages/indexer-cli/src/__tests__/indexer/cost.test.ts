@@ -1,12 +1,21 @@
-import { cliTest, setup, teardown } from '../util'
+import {
+  cliTest,
+  setup,
+  teardown,
+  connect,
+  deleteFromAllTables,
+  seedCostModels,
+} from '../util'
 import path from 'path'
 
 const baseDir = path.join(__dirname, '..')
 
 describe('Indexer cost tests', () => {
   describe('With indexer management server', () => {
-    beforeEach(setup)
-    afterEach(teardown)
+    beforeAll(setup)
+    afterAll(teardown)
+    beforeEach(seedCostModels)
+    afterEach(deleteFromAllTables)
     describe('Cost help', () => {
       cliTest('Indexer cost', ['indexer', 'cost'], 'references/indexer-cost', {
         expectedExitCode: 255,
@@ -33,7 +42,7 @@ describe('Indexer cost tests', () => {
           'cost',
           'set',
           'model',
-          'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr',
+          'QmXRpJW3qBuYaiBYHdhv8DF4bHDZhXBmh91MtrnhJfQ5Lk',
           'references/basic.agora',
         ],
         'references/indexer-cost-model-deployment',
@@ -182,6 +191,7 @@ describe('Indexer cost tests', () => {
   })
 
   describe('Without indexer management server', () => {
+    beforeAll(connect)
     cliTest(
       'Indexer cost set - not connected',
       [
@@ -189,7 +199,7 @@ describe('Indexer cost tests', () => {
         'cost',
         'set',
         'model',
-        'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr',
+        'QmXRpJW3qBuYaiBYHdhv8DF4bHDZhXBmh91MtrnhJfQ5Lk',
         'references/basic.agora',
       ],
       'references/indexer-not-connected',
@@ -211,7 +221,7 @@ describe('Indexer cost tests', () => {
     )
     cliTest(
       'Indexer cost get - not connected',
-      ['indexer', 'cost', 'get', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      ['indexer', 'cost', 'get', 'QmXRpJW3qBuYaiBYHdhv8DF4bHDZhXBmh91MtrnhJfQ5Lk'],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,

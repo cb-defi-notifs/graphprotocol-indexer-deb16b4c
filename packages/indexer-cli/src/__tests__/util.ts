@@ -1,5 +1,4 @@
 import { exec, ExecOptions } from 'child_process'
-import { Wallet } from 'ethers'
 import fs from 'fs'
 import http from 'http'
 import { Socket } from 'net'
@@ -8,23 +7,38 @@ import path from 'path'
 import { Sequelize } from 'sequelize'
 import stripAnsi from 'strip-ansi'
 import {
+  ActionStatus,
+  ActionType,
+  CostModelVariables,
   createIndexerManagementClient,
   createIndexerManagementServer,
   defineIndexerManagementModels,
+  defineQueryFeeModels,
+  GraphNode,
   IndexerManagementClient,
+  IndexerManagementDefaults,
   IndexerManagementModels,
-  IndexingStatusResolver,
-  NetworkSubgraph,
+  IndexingDecisionBasis,
+  MultiNetworks,
+  Network,
+  QueryFeeModels,
+  specification,
+  SubgraphIdentifierType,
 } from '@graphprotocol/indexer-common'
 import {
-  connectContracts,
   connectDatabase,
   createLogger,
+  createMetrics,
   Logger,
-  NetworkContracts,
+  Metrics,
   parseGRT,
-  toAddress,
+  SubgraphDeploymentID,
 } from '@graphprotocol/common-ts'
+import cloneDeep from 'lodash.clonedeep'
+
+const INDEXER_SAVE_CLI_TEST_OUTPUT: boolean =
+  !!process.env.INDEXER_SAVE_CLI_TEST_OUTPUT &&
+  process.env.INDEXER_SAVE_CLI_TEST_OUTPUT.toLowerCase() !== 'false'
 
 declare const __DATABASE__: never
 declare const __LOG_LEVEL__: never
@@ -32,60 +46,122 @@ declare const __LOG_LEVEL__: never
 let defaultMaxEventListeners: number
 let sequelize: Sequelize
 let models: IndexerManagementModels
-let wallet: Wallet
-let address: string
-let contracts: NetworkContracts
+let queryFeeModels: QueryFeeModels
 let logger: Logger
 let indexerManagementClient: IndexerManagementClient
 let server: http.Server
 let sockets: Socket[] = []
+let metrics: Metrics
+
+// TODO:
+//  - Update other tests to use Sepolia so can share process.env.INDEXER_TEST_JRPC_PROVIDER_URL again
+//  - Use process.env.INDEXER_TEST_JRPC_PROVIDER_URL value here if available (like other tests)
+const PUBLIC_JSON_RPC_ENDPOINT = 'https://ethereum-sepolia.publicnode.com'
+
+export const testNetworkSpecification = specification.NetworkSpecification.parse({
+  networkIdentifier: 'sepolia',
+  gateway: {
+    url: 'http://127.0.0.1:8030/',
+  },
+  networkProvider: {
+    url: PUBLIC_JSON_RPC_ENDPOINT,
+  },
+  indexerOptions: {
+    address: '0x56577167dcdd1a3de2e58d53fc2be0b622d82a7c',
+    mnemonic:
+      'famous aspect index polar tornado zero wedding electric floor chalk tenant junk',
+    url: 'http://test-indexer.xyz',
+  },
+  subgraphs: {
+    maxBlockDistance: 10000,
+    networkSubgraph: {
+      url: 'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-sepolia',
+    },
+    epochSubgraph: {
+      url: 'http://test-url.xyz',
+    },
+    tapSubgraph: {
+      url: 'https://api.thegraph.com/subgraphs/name/graphprotocol/scalar-tap-arbitrum-sepolia',
+    },
+  },
+  transactionMonitoring: {
+    gasIncreaseTimeout: 240000,
+    gasIncreaseFactor: 1.2,
+    baseFeePerGasMax: 100 * 10 ** 9,
+    maxTransactionAttempts: 0,
+  },
+  tapAddressBook: {
+    '11155111': {
+      TAPVerifier: '0xf56b5d582920E4527A818FBDd801C0D80A394CB8',
+      AllocationIDTracker: '0xf56b5d582920E4527A818FBDd801C0D80A394CB8',
+      Escrow: '0xf56b5d582920E4527A818FBDd801C0D80A394CB8',
+    },
+  },
+  dai: {
+    contractAddress: '0x4e8a4C63Df58bf59Fef513aB67a76319a9faf448',
+    inject: false,
+  },
+})
 
 export const setup = async () => {
   logger = createLogger({
-    name: 'Indexer CLI tester',
+    name: 'Setup',
     async: false,
     level: __LOG_LEVEL__,
   })
+  logger.info('Setup test infrastructure - indexer-cli')
 
   sequelize = await connectDatabase(__DATABASE__)
   models = defineIndexerManagementModels(sequelize)
-  address = '0x3C17A4c7cD8929B83e4705e04020fA2B1bca2E55'
-  contracts = await connectContracts(wallet, 5)
-  await sequelize.sync({ force: true })
+  queryFeeModels = defineQueryFeeModels(sequelize)
+  metrics = createMetrics()
+  // Clearing the registry prevents duplicate metric registration in the default registry.
+  metrics.registry.clear()
 
-  wallet = Wallet.createRandom()
+  sequelize = await sequelize.sync({ force: true })
 
-  const statusEndpoint = 'http://localhost:8030/graphql'
-  const indexingStatusResolver = new IndexingStatusResolver({
-    logger: logger,
-    statusEndpoint,
-  })
-
-  const networkSubgraph = await NetworkSubgraph.create({
-    logger,
-    endpoint:
-      'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-testnet',
-    deployment: undefined,
-  })
+  const statusEndpoint = 'http://127.0.0.1:8030/graphql'
   const indexNodeIDs = ['node_1']
+  const graphNode = new GraphNode(
+    logger,
+    'http://test-admin-endpoint.xyz',
+    'https://test-query-endpoint.xyz',
+    statusEndpoint,
+    indexNodeIDs,
+  )
+
+  const network = await Network.create(
+    logger,
+    testNetworkSpecification,
+    queryFeeModels,
+    graphNode,
+    metrics,
+  )
+
+  const fakeMainnetNetwork = cloneDeep(network) as Network
+  fakeMainnetNetwork.specification.networkIdentifier = 'eip155:1'
+
+  const multiNetworks = new MultiNetworks(
+    [network, fakeMainnetNetwork],
+    (n: Network) => n.specification.networkIdentifier,
+  )
+
+  const defaults: IndexerManagementDefaults = {
+    globalIndexingRule: {
+      allocationAmount: parseGRT('100'),
+      parallelAllocations: 1,
+      requireSupported: true,
+      safety: true,
+    },
+  }
+
   indexerManagementClient = await createIndexerManagementClient({
     models,
-    address: toAddress(address),
-    contracts: contracts,
-    indexingStatusResolver,
+    graphNode,
     indexNodeIDs,
-    deploymentManagementEndpoint: statusEndpoint,
-    networkSubgraph,
     logger,
-    defaults: {
-      globalIndexingRule: {
-        allocationAmount: parseGRT('1000'),
-        parallelAllocations: 1,
-      },
-    },
-    features: {
-      injectDai: false,
-    },
+    defaults,
+    multiNetworks,
   })
 
   server = await createIndexerManagementServer({
@@ -101,59 +177,166 @@ export const setup = async () => {
 
   defaultMaxEventListeners = process.getMaxListeners()
   process.setMaxListeners(100)
-  process.on('SIGTERM', await shutdownIndexerManagementServer)
-  process.on('SIGINT', await shutdownIndexerManagementServer)
+  process.on('SIGTERM', shutdownIndexerManagementServer)
+  process.on('SIGINT', shutdownIndexerManagementServer)
 
-  // Set global, deployment, and subgraph based test rules and cost model
-  const commands: string[][] = [
-    ['indexer', 'connect', 'http://localhost:18000'],
-    ['indexer', 'rules', 'set', 'global', 'minSignal', '500', 'allocationAmount', '.01'],
-    ['indexer', 'rules', 'set', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
-    ['indexer', 'rules', 'prepare', 'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK'],
-    [
-      'indexer',
-      'rules',
-      'set',
-      '0x0000000000000000000000000000000000000000-0',
-      'allocationAmount',
-      '1000',
-    ],
-    ['indexer', 'rules', 'offchain', '0x0000000000000000000000000000000000000000-1'],
-    [
-      'indexer',
-      'rules',
-      'set',
-      '0x0000000000000000000000000000000000000000-2',
-      'allocationAmount',
-      '1000',
-      'decisionBasis',
-      'offchain',
-      'allocationLifetime',
-      '12',
-    ],
-    ['indexer', 'cost', 'set', 'model', 'global', 'src/__tests__/references/basic.agora'],
-    [
-      'indexer',
-      'cost',
-      'set',
-      'model',
-      'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
-      'src/__tests__/references/basic.agora',
-    ],
-    [
-      'indexer',
-      'cost',
-      'set',
-      'variables',
-      'QmQ44hgrWWt3Qf2X9XEX2fPyTbmQbChxwNm5c1t4mhKpGt',
-      `'{"DAI": "0.5"}'`,
-    ],
-  ]
-  for (const command of commands) {
-    const { exitCode } = await runIndexerCli(command, process.cwd())
-    if (exitCode == 1) {
-      throw Error(`Setup failed: indexer rules or cost set command failed: ${command}`)
-    }
+  await connect()
+}
+
+// Simply setup connection config
+export const connect = async () => {
+  const command = ['indexer', 'connect', 'http://127.0.0.1:18000']
+  const { exitCode, stderr, stdout } = await runIndexerCli(command, process.cwd())
+  if (exitCode == 1) {
+    console.error(stderr)
+    console.log(stdout)
+    throw Error(`Setup failed: indexer rules or cost set command failed: ${command}`)
+  }
+}
+
+export const seedIndexingRules = async () => {
+  logger = createLogger({
+    name: 'Seed',
+    async: false,
+    level: __LOG_LEVEL__,
+  })
+
+  try {
+    // Seed IndexingRule table
+    logger.debug('Seed IndexingRules')
+    await models.IndexingRule.create({
+      id: 1,
+      identifier: 'global',
+      identifierType: SubgraphIdentifierType.GROUP,
+      protocolNetwork: 'eip155:11155111',
+      decisionBasis: IndexingDecisionBasis.RULES,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+      allocationAmount: parseGRT('0.01').toString(),
+      minSignal: parseGRT('500').toString(),
+    })
+    await models.IndexingRule.create({
+      id: 2,
+      identifier: 'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      identifierType: SubgraphIdentifierType.DEPLOYMENT,
+      protocolNetwork: 'eip155:11155111',
+      decisionBasis: IndexingDecisionBasis.RULES,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+    })
+    await models.IndexingRule.create({
+      id: 3,
+      identifier: 'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
+      identifierType: SubgraphIdentifierType.DEPLOYMENT,
+      protocolNetwork: 'eip155:11155111',
+      decisionBasis: IndexingDecisionBasis.OFFCHAIN,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+    })
+    await models.IndexingRule.create({
+      id: 4,
+      identifier: '0x0000000000000000000000000000000000000000-0',
+      identifierType: SubgraphIdentifierType.SUBGRAPH,
+      protocolNetwork: 'eip155:11155111',
+      decisionBasis: IndexingDecisionBasis.RULES,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+      allocationAmount: parseGRT('1000').toString(),
+    })
+    await models.IndexingRule.create({
+      id: 5,
+      identifier: '0x0000000000000000000000000000000000000000-1',
+      identifierType: SubgraphIdentifierType.SUBGRAPH,
+      protocolNetwork: 'eip155:11155111',
+      decisionBasis: IndexingDecisionBasis.OFFCHAIN,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+    })
+    await models.IndexingRule.create({
+      id: 6,
+      identifier: '0x0000000000000000000000000000000000000000-2',
+      identifierType: SubgraphIdentifierType.SUBGRAPH,
+      protocolNetwork: 'eip155:11155111',
+      allocationAmount: parseGRT('1000').toString(),
+      allocationLifetime: 12,
+      decisionBasis: IndexingDecisionBasis.OFFCHAIN,
+      requireSupported: true,
+      safety: true,
+      autoRenewal: true,
+    })
+  } catch (e) {
+    logger.error('Failed to seed DB', { error: e })
+    process.exit(1)
+  }
+}
+
+export const seedCostModels = async () => {
+  logger = createLogger({
+    name: 'Seed IndexingRules',
+    async: false,
+    level: __LOG_LEVEL__,
+  })
+  try {
+    // Seed CostModel table
+    logger.debug('Seed CostModels')
+    await models.CostModel.create({
+      deployment: 'global',
+      model: 'default => 0.00025;',
+    })
+    await models.CostModel.create({
+      deployment: new SubgraphDeploymentID(
+        'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
+      ).toString(),
+      model: 'default => 0.00025;',
+    })
+    await models.CostModel.create({
+      deployment: new SubgraphDeploymentID(
+        'QmQ44hgrWWt3Qf2X9XEX2fPyTbmQbChxwNm5c1t4mhKpGt',
+      ).toString(),
+      variables: { DAI: '0.5' } as CostModelVariables,
+    })
+  } catch (e) {
+    logger.error('Failed to seed CostModel table', { error: e })
+    process.exit(1)
+  }
+}
+
+export const seedActions = async () => {
+  logger = createLogger({
+    name: 'Seed Actions',
+    async: false,
+    level: __LOG_LEVEL__,
+  })
+
+  try {
+    // Seed Action table
+    logger.debug('Seed Actions')
+    await models.Action.create({
+      id: 1,
+      type: ActionType.ALLOCATE,
+      status: ActionStatus.SUCCESS,
+      deploymentID: 'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      source: 'test',
+      reason: 'test',
+      protocolNetwork: 'eip155:11155111',
+    })
+    await models.Action.create({
+      id: 2,
+      type: ActionType.UNALLOCATE,
+      status: ActionStatus.FAILED,
+      deploymentID: 'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      source: 'test',
+      reason: 'test',
+      protocolNetwork: 'eip155:11155111',
+    })
+  } catch (e) {
+    logger.error('Failed to seed ', { error: e })
+    process.exit(1)
   }
 }
 
@@ -173,6 +356,12 @@ export const teardown = async () => {
   process.setMaxListeners(defaultMaxEventListeners)
   await shutdownIndexerManagementServer()
   await dropSequelizeModels()
+}
+
+export const deleteFromAllTables = async () => {
+  const queryInterface = sequelize.getQueryInterface()
+  const allTables = await queryInterface.showAllTables()
+  await Promise.all(allTables.map(tableName => queryInterface.bulkDelete(tableName, {})))
 }
 
 export interface CommandResult {
@@ -224,12 +413,31 @@ export const cliTest = (
             `Make sure there is least one expected output located at the defined 'outputReferencePath', '${outputReferencePath}'`,
         )
       }
+
+      if (INDEXER_SAVE_CLI_TEST_OUTPUT) {
+        // To aid debugging, persist the output of CLI test commands for reviewing potential issues when tests fail.
+        // Requires setting the environment variable INDEXER_SAVE_CLI_TEST_OUTPUT.
+        const outfile = outputReferencePath.replace('references/', '')
+        const prefix = `/tmp/indexer-cli-test`
+        if (stdout) {
+          fs.writeFile(`${prefix}-${outfile}.stdout`, stripAnsi(stdout), 'utf8', err => {
+            err ? console.error('test: %s, error: %s', outfile, err) : null
+          })
+        }
+        if (stderr) {
+          fs.writeFile(`${prefix}-${outfile}.stderr`, stripAnsi(stderr), 'utf8', err => {
+            err ? console.error('test: %s, error: %s', outfile, err) : null
+          })
+        }
+      }
+
       if (expectedExitCode !== undefined) {
         if (exitCode == undefined) {
           throw new Error('Expected exitCode (found undefined)')
         }
         expect(exitCode).toBe(expectedExitCode)
       }
+
       if (expectedStderr) {
         if (stderr == undefined) {
           throw new Error('Expected stderr (found undefined)')

@@ -6,11 +6,13 @@ import fs from 'fs'
 import { parse as yaml_parse } from 'yaml'
 
 import {
+  AddressBook,
   connectContracts,
   connectDatabase,
   createLogger,
   createMetrics,
   createMetricsServer,
+  NetworkContracts,
   SubgraphDeploymentID,
   toAddress,
 } from '@graphprotocol/common-ts'
@@ -20,23 +22,28 @@ import {
   defineQueryFeeModels,
   indexerError,
   IndexerErrorCode,
-  IndexingStatusResolver,
+  GraphNode,
+  monitorEligibleAllocations,
   Network,
   NetworkSubgraph,
   registerIndexerErrorMetrics,
+  resolveChainId,
+  validateProviderNetworkIdentifier,
 } from '@graphprotocol/indexer-common'
 
 import { createServer } from '../server'
 import { QueryProcessor } from '../queries'
-import { ensureAttestationSigners, monitorEligibleAllocations } from '../allocations'
+import { ensureAttestationSigners } from '../allocations'
 import { AllocationReceiptManager } from '../query-fees'
+import pRetry from 'p-retry'
 
 export default {
   command: 'start',
   describe: 'Start the service',
   builder: (yargs: Argv): Argv => {
     return yargs
-      .option('ethereum', {
+      .option('network-provider', {
+        alias: 'ethereum',
         description: 'Ethereum node or provider URL',
         type: 'string',
         required: true,
@@ -173,10 +180,40 @@ export default {
         type: 'string',
         required: false,
       })
+      .option('address-book', {
+        description: 'Graph contracts address book file path',
+        type: 'string',
+        required: false,
+      })
+      .option('info-rate-limit', {
+        description:
+          'Max requests per minute before returning 429 status codes, applies to paths: /cost, /subgraphs/health, /operator',
+        type: 'number',
+        required: false,
+        default: 300,
+        group: 'Server options',
+      })
+      .option('status-rate-limit', {
+        description:
+          'Max requests per minute before returning 429 status codes, applies to paths: /status, /network',
+        type: 'number',
+        required: false,
+        default: 300,
+        group: 'Server options',
+      })
+      .option('body-size-limit', {
+        description: 'Max body size per request (mb)',
+        type: 'number',
+        required: false,
+        default: 0.1,
+        group: 'Server options',
+      })
+
       .check(argv => {
         if (!argv['network-subgraph-endpoint'] && !argv['network-subgraph-deployment']) {
           return `At least one of --network-subgraph-endpoint and --network-subgraph-deployment must be provided`
         }
+
         return true
       })
       .config({
@@ -273,47 +310,76 @@ export default {
     logger.info('Successfully connected to database')
 
     logger.info(`Connect to network subgraph`)
-    const indexingStatusResolver = new IndexingStatusResolver({
+    const graphNode = new GraphNode(
       logger,
-      statusEndpoint: argv.graphNodeStatusEndpoint,
-    })
+      // We use a fake Graph Node admin endpoint here because we don't
+      // want the Indexer Service to perform management actions on
+      // Graph Node.
+      'http://fake-graph-node-admin-endpoint',
+      argv.graphNodeQueryEndpoint,
+      argv.graphNodeStatusEndpoint,
+      argv.indexNodeIds,
+    )
+
+    const networkProvider = await Network.provider(
+      logger,
+      metrics,
+      '_',
+      argv.networkProvider,
+      argv.ethereumPollingInterval,
+    )
+    const networkIdentifier = await networkProvider.getNetwork()
+    const protocolNetwork = resolveChainId(networkIdentifier.chainId)
+
     const networkSubgraph = await NetworkSubgraph.create({
       logger,
       endpoint: argv.networkSubgraphEndpoint,
       deployment: argv.networkSubgraphDeployment
         ? {
-            indexingStatusResolver,
+            graphNode,
             deployment: new SubgraphDeploymentID(argv.networkSubgraphDeployment),
-            graphNodeQueryEndpoint: argv.graphNodeQueryEndpoint,
           }
         : undefined,
     })
     logger.info(`Successfully connected to network subgraph`)
 
-    const networkProvider = await Network.provider(
-      logger,
-      metrics,
-      argv.ethereum,
-      argv.ethereumPollingInterval,
-    )
-    const network = await networkProvider.getNetwork()
+    // If the network subgraph deployment is present, validate if the `chainId` we get from our
+    // provider is consistent.
+    if (argv.networkSubgraphDeployment) {
+      try {
+        await validateProviderNetworkIdentifier(
+          protocolNetwork,
+          argv.networkSubgraphDeployment,
+          graphNode,
+          logger,
+        )
+      } catch (e) {
+        logger.warn(
+          'Failed to validate Network Subgraph on index-nodes. Will use external subgraph endpoint instead',
+        )
+      }
+    }
 
     logger.info('Connect to contracts', {
-      network: network.name,
-      chainId: network.chainId,
+      network: networkIdentifier.name,
+      chainId: networkIdentifier.chainId,
     })
 
-    let contracts = undefined
+    let contracts: NetworkContracts | undefined = undefined
     try {
-      contracts = await connectContracts(networkProvider, network.chainId)
+      const addressBook = argv.addressBook
+        ? (JSON.parse(fs.readFileSync(argv.addressBook).toString()) as AddressBook)
+        : undefined
+      contracts = await connectContracts(
+        networkProvider,
+        networkIdentifier.chainId,
+        addressBook,
+      )
     } catch (error) {
       logger.error(
         `Failed to connect to contracts, please ensure you are using the intended Ethereum Network`,
-        {
-          error,
-        },
       )
-      throw error
+      throw indexerError(IndexerErrorCode.IE075, error)
     }
 
     logger.info('Successfully connected to contracts', {
@@ -332,21 +398,66 @@ export default {
       queryFeeModels,
       logger,
       toAddress(argv.clientSignerAddress),
+      protocolNetwork,
     )
 
     // Ensure the address is checksummed
-    const address = toAddress(wallet.address)
+    const operatorAddress = toAddress(wallet.address)
 
     logger = logger.child({
       indexer: indexerAddress.toString(),
-      operator: address.toString(),
+      operator: operatorAddress.toString(),
     })
+
+    logger.info('Validating operator wallet is approved to take actions for indexer')
+    // Validate the operator wallet matches the operator set for the indexer
+    if (indexerAddress === operatorAddress) {
+      logger.info(`Indexer and operator are identical, operator status granted`)
+    } else {
+      const isOperator = await pRetry(
+        async () =>
+          contracts!.staking.isOperator(
+            wallet.address.toString(),
+            indexerAddress.toString(),
+          ),
+        {
+          retries: 10,
+          maxTimeout: 10000,
+          onFailedAttempt: err => {
+            logger.warn(
+              `contracts.staking.isOperator(${wallet.address.toString()}, ${indexerAddress.toString()}) failed`,
+              {
+                attempt: err.attemptNumber,
+                retriesLeft: err.retriesLeft,
+                err: err.message,
+              },
+            )
+          },
+        } as pRetry.Options,
+      )
+
+      if (isOperator == false) {
+        logger.error(
+          'Operator wallet is not allowed for indexer, please see attached debug suggestions',
+          {
+            debugSuggestion1: 'verify that operator wallet is set for indexer account',
+            debugSuggestion2:
+              'verify that service and agent are both using correct operator wallet mnemonic',
+          },
+        )
+        throw indexerError(
+          IndexerErrorCode.IE034,
+          `contracts.staking.isOperator returned 'False'`,
+        )
+      }
+    }
 
     // Monitor indexer allocations that we may receive traffic for
     const allocations = monitorEligibleAllocations({
       indexer: indexerAddress,
       logger,
       networkSubgraph,
+      protocolNetwork,
       interval: argv.allocationSyncingInterval,
     })
 
@@ -355,7 +466,7 @@ export default {
       logger,
       allocations,
       wallet,
-      chainId: network.chainId,
+      chainId: networkIdentifier.chainId,
       disputeManagerAddress: contracts.disputeManager.address,
     })
 
@@ -371,12 +482,8 @@ export default {
 
     const indexerManagementClient = await createIndexerManagementClient({
       models,
-      address,
-      contracts,
-      indexingStatusResolver,
+      graphNode,
       indexNodeIDs: ['node_1'], // This is just a dummy since the indexer-service doesn't manage deployments,
-      deploymentManagementEndpoint: argv.graphNodeStatusEndpoint,
-      networkSubgraph,
       logger,
       defaults: {
         // This is just a dummy, since we're never writing to the management
@@ -385,9 +492,7 @@ export default {
           allocationAmount: BigNumber.from('0'),
         },
       },
-      features: {
-        injectDai: true,
-      },
+      multiNetworks: undefined,
     })
 
     // Spin up a basic webserver
@@ -404,6 +509,9 @@ export default {
       networkSubgraph,
       networkSubgraphAuthToken: argv.networkSubgraphAuthToken,
       serveNetworkSubgraph: argv.serveNetworkSubgraph,
+      infoRateLimit: argv.infoRateLimit,
+      statusRateLimit: argv.statusRateLimit,
+      bodySizeLimit: argv.bodySizeLimit,
     })
   },
 }

@@ -4,7 +4,7 @@
 
 import http from 'http'
 import supertest from 'supertest'
-import { BigNumber, ethers, Wallet } from 'ethers'
+import { BigNumber, Wallet } from 'ethers'
 import { Sequelize } from 'sequelize'
 import { Socket } from 'net'
 
@@ -20,7 +20,7 @@ import {
 
 import { createServer } from '..'
 import { QueryProcessor } from '../../queries'
-import { ensureAttestationSigners, monitorEligibleAllocations } from '../../allocations'
+import { ensureAttestationSigners } from '../../allocations'
 import { AllocationReceiptManager } from '../../query-fees'
 import {
   createIndexerManagementClient,
@@ -29,6 +29,7 @@ import {
   IndexerManagementClient,
   IndexerManagementModels,
   IndexingStatusResolver,
+  monitorEligibleAllocations,
   NetworkSubgraph,
   QueryFeeModels,
   getTestProvider,
@@ -61,9 +62,9 @@ const setup = async () => {
   queryFeeModels = defineQueryFeeModels(sequelize)
   models = defineIndexerManagementModels(sequelize)
   address = '0x90f8bf6a479f320ead074411a4b0e7944ea8c9c1'
-  contracts = await connectContracts(getTestProvider('goerli'), 5)
-  await sequelize.sync({ force: true })
-  const statusEndpoint = 'http://localhost:8030/graphql'
+  contracts = await connectContracts(getTestProvider('sepolia'), 11155111, undefined)
+  sequelize = await sequelize.sync({ force: true })
+  const statusEndpoint = 'http://127.0.0.1:8030/graphql'
   indexingStatusResolver = new IndexingStatusResolver({
     logger: logger,
     statusEndpoint,
@@ -132,7 +133,7 @@ const setup = async () => {
 
   const queryProcessor = new QueryProcessor({
     logger: logger.child({ component: 'QueryProcessor' }),
-    graphNode: 'http://localhost:8000/',
+    graphNode: 'http://127.0.0.1:8000/',
     metrics,
     receiptManager,
     queryTimingLogs: false,
@@ -143,7 +144,7 @@ const setup = async () => {
     logger,
     port: 9600,
     queryProcessor,
-    graphNodeStatusEndpoint: 'http://localhost:8030/graphql',
+    graphNodeStatusEndpoint: 'http://127.0.0.1:8030/graphql',
     metrics,
     freeQueryAuthToken: '',
     indexerManagementClient: client,

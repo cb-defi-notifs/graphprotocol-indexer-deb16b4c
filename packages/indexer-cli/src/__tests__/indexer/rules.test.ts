@@ -1,18 +1,32 @@
-import { cliTest, setup, teardown } from '../util'
+import {
+  cliTest,
+  connect,
+  setup,
+  teardown,
+  deleteFromAllTables,
+  seedIndexingRules,
+} from '../util'
 import path from 'path'
 
 const baseDir = path.join(__dirname, '..')
 
 describe('Indexer rules tests', () => {
   describe('With indexer management server', () => {
-    beforeEach(setup)
-    afterEach(teardown)
+    beforeAll(setup)
+    afterAll(teardown)
+    beforeEach(seedIndexingRules)
+    afterEach(deleteFromAllTables)
     describe('Rules help', () => {
-      cliTest('Indexer rules', ['indexer', 'rules'], 'references/indexer-rules', {
-        expectedExitCode: 255,
-        cwd: baseDir,
-        timeout: 10000,
-      })
+      cliTest(
+        'Indexer rules',
+        ['indexer', 'rules', '--network', 'sepolia'],
+        'references/indexer-rules',
+        {
+          expectedExitCode: 255,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
       cliTest(
         'Indexer rules help',
         ['indexer', 'rules', '--help'],
@@ -28,7 +42,14 @@ describe('Indexer rules tests', () => {
     describe('Rules start...', () => {
       cliTest(
         'Indexer rules start - success',
-        ['indexer', 'rules', 'start', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'start',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-always',
         {
           expectedExitCode: 0,
@@ -37,9 +58,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules start - no args',
+        'Indexer rules start - no network',
         ['indexer', 'rules', 'start'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules start - no identifier',
+        ['indexer', 'rules', 'start', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -48,7 +79,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules start - invalid deployment ID ',
-        ['indexer', 'rules', 'start', 'Qmemememememe'],
+        ['indexer', 'rules', 'start', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -61,7 +92,14 @@ describe('Indexer rules tests', () => {
     describe('Rules prepare...', () => {
       cliTest(
         'Indexer rules prepare - success',
-        ['indexer', 'rules', 'prepare', 'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK'],
+        [
+          'indexer',
+          'rules',
+          'prepare',
+          '--network',
+          'sepolia',
+          'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
+        ],
         'references/indexer-rule-deployment-offchain',
         {
           expectedExitCode: 0,
@@ -75,6 +113,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'offchain',
+          '--network',
+          'sepolia',
           'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
         ],
         'references/indexer-rule-deployment-offchain',
@@ -85,9 +125,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules prepare - no args',
+        'Indexer rules prepare - no network',
         ['indexer', 'rules', 'prepare'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules prepare - no identifier',
+        ['indexer', 'rules', 'prepare', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -96,7 +146,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules prepare - invalid deployment ID ',
-        ['indexer', 'rules', 'prepare', 'Qmemememememe'],
+        ['indexer', 'rules', 'prepare', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -109,7 +159,14 @@ describe('Indexer rules tests', () => {
     describe('Rules stop...', () => {
       cliTest(
         'Indexer rules stop - success',
-        ['indexer', 'rules', 'stop', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'stop',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-never',
         {
           expectedExitCode: 0,
@@ -118,9 +175,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules stop - no args',
+        'Indexer rules stop - no network',
         ['indexer', 'rules', 'stop'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules stop - no identifier',
+        ['indexer', 'rules', 'stop', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -129,7 +196,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules stop - invalid deployment ID',
-        ['indexer', 'rules', 'stop', 'Qmemememememe'],
+        ['indexer', 'rules', 'stop', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -142,7 +209,14 @@ describe('Indexer rules tests', () => {
     describe('Rules maybe...', () => {
       cliTest(
         'Indexer rules maybe - success',
-        ['indexer', 'rules', 'maybe', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'maybe',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-rules',
         {
           expectedExitCode: 0,
@@ -151,9 +225,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules maybe - no args',
+        'Indexer rules maybe - no network',
         ['indexer', 'rules', 'maybe'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules maybe - no identifier',
+        ['indexer', 'rules', 'maybe', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -162,7 +246,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules maybe - invalid deployment ID ',
-        ['indexer', 'rules', 'maybe', 'Qmemememememe'],
+        ['indexer', 'rules', 'maybe', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -175,7 +259,14 @@ describe('Indexer rules tests', () => {
     describe('Rules clear...', () => {
       cliTest(
         'Indexer rules clear - success',
-        ['indexer', 'rules', 'clear', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'clear',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-rules',
         {
           expectedExitCode: 0,
@@ -184,9 +275,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules clear - no args',
+        'Indexer rules clear - no network',
         ['indexer', 'rules', 'clear'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules clear - no identifier',
+        ['indexer', 'rules', 'clear', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -195,7 +296,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules clear - invalid deployment ID ',
-        ['indexer', 'rules', 'clear', 'Qmemememememe'],
+        ['indexer', 'rules', 'clear', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -208,7 +309,14 @@ describe('Indexer rules tests', () => {
     describe('Rules delete...', () => {
       cliTest(
         'Indexer rules delete - success',
-        ['indexer', 'rules', 'delete', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'delete',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-deleted-success',
         {
           expectedExitCode: 0,
@@ -218,7 +326,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules delete - success',
-        ['indexer', 'rules', 'delete', 'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK'],
+        [
+          'indexer',
+          'rules',
+          'delete',
+          '--network',
+          'sepolia',
+          'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
+        ],
         'references/indexer-rule-deployment-deleted-offchain-success',
         {
           expectedExitCode: 0,
@@ -227,9 +342,19 @@ describe('Indexer rules tests', () => {
         },
       )
       cliTest(
-        'Indexer rules delete - no args',
+        'Indexer rules delete - no network',
         ['indexer', 'rules', 'delete'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
+        {
+          expectedExitCode: 1,
+          cwd: baseDir,
+          timeout: 10000,
+        },
+      )
+      cliTest(
+        'Indexer rules delete - no identifier',
+        ['indexer', 'rules', 'delete', '--network', 'sepolia'],
+        'references/indexer-rules-no-identifier',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -238,7 +363,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules delete - invalid deployment ID ',
-        ['indexer', 'rules', 'delete', 'Qmemememememe'],
+        ['indexer', 'rules', 'delete', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -255,6 +380,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           '0x0000000000000000000000000000000000000000-0',
           'allocationAmount',
           '1000',
@@ -272,6 +399,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           '0x0000000000000000000000000000000000000000-1',
           'allocationAmount',
           '1000',
@@ -289,7 +418,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules set deployment id - success',
-        ['indexer', 'rules', 'set', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'set',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-rules',
         {
           expectedExitCode: 0,
@@ -303,6 +439,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           'QmVEV7RA2U6BJT9Ssjxcfyrk4YQUnVqSRNX4TvYagjzh9h',
           'requireSupported',
           'false',
@@ -320,9 +458,13 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           'QmVEV7RA2U6BJT9Ssjxcfyrk4YQUnVqSRNX4TvYagjzh9h',
           'safety',
           'false',
+          'requireSupported',
+          'true',
         ],
         'references/indexer-rule-deployment-safety',
         {
@@ -337,6 +479,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
           'decisionBasis',
           'offchain',
@@ -358,6 +502,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           'global',
           'minSignal',
           '500',
@@ -374,7 +520,7 @@ describe('Indexer rules tests', () => {
       cliTest(
         'Indexer rules set - no args',
         ['indexer', 'rules', 'set'],
-        'references/indexer-rules-command-no-args',
+        'references/indexer-rules-no-network',
         {
           expectedExitCode: 1,
           cwd: baseDir,
@@ -383,7 +529,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules set - invalid deployment ID ',
-        ['indexer', 'rules', 'set', 'Qmemememememe'],
+        ['indexer', 'rules', 'set', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -397,6 +543,8 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'set',
+          '--network',
+          'sepolia',
           '0x0000000000000000000000000000000000000000-0',
           'allocationAmoewt',
           '1000',
@@ -423,7 +571,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules get deployment - success',
-        ['indexer', 'rules', 'get', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+        [
+          'indexer',
+          'rules',
+          'get',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+        ],
         'references/indexer-rule-deployment-rules',
         {
           expectedExitCode: 0,
@@ -433,7 +588,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules get deployment - success - offchain',
-        ['indexer', 'rules', 'get', 'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK'],
+        [
+          'indexer',
+          'rules',
+          'get',
+          '--network',
+          'sepolia',
+          'QmZfeJYR86UARzp9HiXbURWunYgC9ywvPvoePNbuaATrEK',
+        ],
         'references/indexer-rule-deployment-offchain',
         {
           expectedExitCode: 0,
@@ -443,7 +605,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules get subgraph - success',
-        ['indexer', 'rules', 'get', '0x0000000000000000000000000000000000000000-0'],
+        [
+          'indexer',
+          'rules',
+          'get',
+          '--network',
+          'sepolia',
+          '0x0000000000000000000000000000000000000000-0',
+        ],
         'references/indexer-rule-subgraph-rules',
         {
           expectedExitCode: 0,
@@ -453,7 +622,14 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules get subgraph - success - options',
-        ['indexer', 'rules', 'get', '0x0000000000000000000000000000000000000000-2'],
+        [
+          'indexer',
+          'rules',
+          'get',
+          '--network',
+          'sepolia',
+          '0x0000000000000000000000000000000000000000-2',
+        ],
         'references/indexer-rule-subgraph-options',
         {
           expectedExitCode: 0,
@@ -467,7 +643,9 @@ describe('Indexer rules tests', () => {
           'indexer',
           'rules',
           'get',
-          'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr',
+          '--network',
+          'sepolia',
+          'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
           '--output',
           'yaml',
         ],
@@ -480,7 +658,7 @@ describe('Indexer rules tests', () => {
       )
       cliTest(
         'Indexer rules get global - success',
-        ['indexer', 'rules', 'get', 'global'],
+        ['indexer', 'rules', 'get', '--network', 'sepolia', 'global'],
         'references/indexer-rule-global-rules',
         {
           expectedExitCode: 0,
@@ -493,14 +671,14 @@ describe('Indexer rules tests', () => {
         ['indexer', 'rules', 'get'],
         'references/indexer-rules-command-no-args',
         {
-          expectedExitCode: 1,
+          expectedExitCode: 0,
           cwd: baseDir,
           timeout: 10000,
         },
       )
       cliTest(
         'Indexer rules get - invalid deployment ID ',
-        ['indexer', 'rules', 'get', 'Qmemememememe'],
+        ['indexer', 'rules', 'get', '--network', 'sepolia', 'Qmemememememe'],
         'references/indexer-rules-invalid-identifier-arg',
         {
           expectedExitCode: 1,
@@ -512,9 +690,17 @@ describe('Indexer rules tests', () => {
   })
 
   describe('Without indexer management server', () => {
+    beforeAll(connect)
     cliTest(
       'Indexer rules start - not connected',
-      ['indexer', 'rules', 'start', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'start',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,
@@ -524,7 +710,14 @@ describe('Indexer rules tests', () => {
     )
     cliTest(
       'Indexer rules stop - not connected',
-      ['indexer', 'rules', 'stop', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'stop',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,
@@ -534,7 +727,14 @@ describe('Indexer rules tests', () => {
     )
     cliTest(
       'Indexer rules maybe - not connected',
-      ['indexer', 'rules', 'maybe', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'maybe',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,
@@ -543,18 +743,15 @@ describe('Indexer rules tests', () => {
       },
     )
     cliTest(
-      'Indexer rules get - no args',
-      ['indexer', 'rules', 'get'],
-      'references/indexer-rules-command-no-args',
-      {
-        expectedExitCode: 1,
-        cwd: baseDir,
-        timeout: 10000,
-      },
-    )
-    cliTest(
       'Indexer rules get - not connected',
-      ['indexer', 'rules', 'get', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'get',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,
@@ -564,7 +761,14 @@ describe('Indexer rules tests', () => {
     )
     cliTest(
       'Indexer rules delete - not connected',
-      ['indexer', 'rules', 'delete', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'delete',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,
@@ -574,7 +778,14 @@ describe('Indexer rules tests', () => {
     )
     cliTest(
       'Indexer rules clear - not connected',
-      ['indexer', 'rules', 'clear', 'QmZZtzZkfzCWMNrajxBf22q7BC9HzoT5iJUK3S8qA6zNZr'],
+      [
+        'indexer',
+        'rules',
+        'clear',
+        '--network',
+        'sepolia',
+        'QmSrf6VVPyg9NGdS1xhLmoosk3qZQaWhfoSTHE2H7sht6Q',
+      ],
       'references/indexer-not-connected',
       {
         expectedExitCode: 1,

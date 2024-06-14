@@ -10,7 +10,7 @@ Network information can be found at https://thegraph.com/explorer?chain=mainnet.
 | indexer-agent   | [0.20.16](https://github.com/graphprotocol/indexer/releases/tag/v0.20.16)    |
 | indexer-cli     | [0.20.16](https://github.com/graphprotocol/indexer/releases/tag/v0.20.16)    |
 | indexer-service | [0.20.16](https://github.com/graphprotocol/indexer/releases/tag/v0.20.16)    |
-| graph-node      | [0.31.0](https://github.com/graphprotocol/graph-node/releases/tag/v0.31.0)   |
+| graph-node      | [0.34.0](https://github.com/graphprotocol/graph-node/releases/tag/v0.34.0)   |
 
 ## Network Parameters
 
@@ -41,12 +41,12 @@ Other network contracts can be found in [graphprotocol/contracts](https://github
 | `INDEXER_AGENT_INDEXER_ADDRESS`             | `--indexer-address`             | Ethereum address of mainnet indexer                                                |
 | `INDEXER_AGENT_INDEXER_GEO_COORDINATES`     | `--indexer-geo-coordinates`     | Geo coordinates of mainnet indexer infrastructure                                  |
 | `INDEXER_AGENT_MNEMONIC`                    | `--mnemonic`                    | Ethereum mnemonic for mainnet operator                                             |
-| `INDEXER_AGENT_NETWORK_SUBGRAPH_DEPLOYMENT` | `--network-subgraph-deployment` | `QmU7zqJyHSyUP3yFii8sBtHT8FaJn2WmUnRvwjAUTjwMBP`                                   |
-| `INDEXER_AGENT_NETWORK_SUBGRAPH_ENDPOINT`   | `--network-subgraph-endpoint`   | `https://gateway.thegraph.com/network`                                             |
+| `INDEXER_AGENT_NETWORK_SUBGRAPH_DEPLOYMENT` | `--network-subgraph-deployment` | `QmWaCrvdyepm1Pe6RPkJFT3u8KmaZahAvJEFCt27HRWyK4`                                   |
+| `INDEXER_AGENT_NETWORK_SUBGRAPH_ENDPOINT`   | `--network-subgraph-endpoint`   | `https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/9Co7EQe5PgW3ugCUJrJgRv4u9zdEuDJf8NvMWftNsBH8`                                             |
 | `INDEXER_AGENT_DAI_CONTRACT`                | `--dai-contract`                | `0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48` (USDC)                                |
 | `INDEXER_AGENT_COLLECT_RECEIPTS_ENDPOINT`   | `--collect-receipts-endpoint`   | `https://gateway.network.thegraph.com/collect-receipts`                            |
 | `INDEXER_AGENT_GAS_PRICE_MAX`               | `--gas-price-max`               | `50`                                                                               |
-| `INDEXER_AGENT_EPOCH_SUBGRAPH_ENDPOINT`     | `--epoch-subgraph-endpoint`     | `https://api.thegraph.com/subgraphs/name/graphprotocol/mainnet-epoch-block-oracle` |
+| `INDEXER_AGENT_EPOCH_SUBGRAPH_ENDPOINT`     | `--epoch-subgraph-endpoint`     | `https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/Fg36gCZE7pXEuZ3p8sxYzFE5UbgHtk7kcJiC5HBbfgmY` |
 
 In order to avoid collecting or claiming query fees below a certain threshold
 (e.g. below the cost of the two transactions), the following configuration
@@ -66,8 +66,8 @@ option can be used.
 | `INDEXER_SERVICE_ETHEREUM_NETWORK`            | `--ethereum-network`            | `mainnet`                                        |
 | `INDEXER_SERVICE_INDEXER_ADDRESS`             | `--indexer-address`             | Ethereum address of mainnet indexer              |
 | `INDEXER_SERVICE_MNEMONIC`                    | `--mnemonic`                    | Ethereum mnemonic for mainnet operator           |
-| `INDEXER_SERVICE_NETWORK_SUBGRAPH_DEPLOYMENT` | `--network-subgraph-deployment` | `QmU7zqJyHSyUP3yFii8sBtHT8FaJn2WmUnRvwjAUTjwMBP` |
-| `INDEXER_SERVICE_NETWORK_SUBGRAPH_ENDPOINT`   | `--network-subgraph-endpoint`   | `https://gateway.thegraph.com/network`           |
+| `INDEXER_SERVICE_NETWORK_SUBGRAPH_DEPLOYMENT` | `--network-subgraph-deployment` | `QmWaCrvdyepm1Pe6RPkJFT3u8KmaZahAvJEFCt27HRWyK4` |
+| `INDEXER_SERVICE_NETWORK_SUBGRAPH_ENDPOINT`   | `--network-subgraph-endpoint`   | `https://gateway-arbitrum.network.thegraph.com/api/[api-key]/subgraphs/id/9Co7EQe5PgW3ugCUJrJgRv4u9zdEuDJf8NvMWftNsBH8`           |
 | `INDEXER_SERVICE_CLIENT_SIGNER_ADDRESS`       | `--client-signer-address`       | `0x982D10c56b8BBbD6e09048F5c5f01b43C65D5aE0`     |
 
 ### Graph Node
@@ -77,35 +77,3 @@ option can be used.
 | `ethereum`           | `--ethereum-rpc` | `mainnet:<ethereum-json-rpc-url>`   |
 | `ipfs`               | `--ipfs`         | `https://ipfs.network.thegraph.com` |
 
-## Feature support
-
-> This defines indexing & querying features which are experimental or not fully supported for indexing & query rewards and arbitration ([read more](../feature-support-matrix.md)).
-
-```
-graph-node: >=0.30 <0.32
-```
-
-| Subgraph Feature         | Aliases      | Implemented | Experimental | Query Arbitration | Indexing Arbitration | Indexing Rewards |
-|--------------------------|--------------|-------------|--------------|-------------------|----------------------|------------------|
-| **Core Features**        |              |             |              |                   |                      |                  |
-| Full-text Search         |              | Yes         | No           | No                | Yes                  | Yes              |
-| Non-Fatal Errors         |              | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| Grafting                 |              | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| **Data Source Types**    |              |             |              |                   |                      |                  |
-| eip155:*                 | *            | Yes         | No           | No                | No                   | No               |
-| eip155:1                 | mainnet      | Yes         | No           | Yes               | Yes                  | Yes              |
-| eip155:100               | gnosis       | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| near:*                   | *            | Yes         | Yes          | No                | No                   | No               |
-| cosmos:*                 | *            | Yes         | Yes          | No                | No                   | No               |
-| arweave:*                | *            | Yes         | Yes          | No                | No                   | No               |
-| eip155:42161             | arbitrum-one | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| eip155:42220             | celo         | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| eip155:43114             | avalanche    | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| eip155:250               | fantom       | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| eip155:137               | matic        | Yes         | Yes          | Yes               | Yes                  | Yes              |
-| **Data Source Features** |              |             |              |                   |                      |                  |
-| ipfs.cat in mappings     |              | Yes         | Yes          | No                | No                   | No               |
-| ENS                      |              | Yes         | Yes          | No                | No                   | No               |
-| File data sources: IPFS  |              | Yes         | Yes          | No                | Yes                  | Yes              |
-
-[Council snapshot](https://snapshot.org/#/council.graphprotocol.eth/proposal/0x80c55bb8697d16fedb71ccdce40704f24e931cc28f289a029e0717f3b729e6a8)

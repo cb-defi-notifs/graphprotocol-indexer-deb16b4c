@@ -17,7 +17,7 @@
     "test": "lerna --concurrency 1 run test --stream --ignore @graphprotocol/indexer-service",
     "test:ci": "lerna --concurrency 1 run test:ci --stream --ignore @graphprotocol/indexer-service",
     "update-common-ts": "./scripts/update-common-ts.sh 1.8.3",
-    "clean": "rm -rf ./node_modules && lerna run clean",
+    "clean": "lerna run clean && rm -rf ./node_modules",
     "compile": "lerna run compile"
   },
   "devDependencies": {
@@ -26,7 +26,7 @@
   },
   "resolutions": {
     "ethers": "5.7.0",
-    "sequelize": "6.19.0",
+    "sequelize": "6.33.0",
     "@ethersproject/bignumber": "5.7.0",
     "@ethersproject/providers": "5.7.0",
     "@urql/core": "2.4.4",
@@ -34,14 +34,19 @@
   },
   "overrides": {
     "ethers": "5.7.0",
-    "sequelize": "6.19.0",
+    "sequelize": "6.33.0",
     "@ethersproject/bignumber": "5.7.0",
     "@ethersproject/providers": "5.7.0",
     "@urql/core": "2.4.4",
     "@urql/exchange-execute": "1.2.2",
-    "graphql": "16.3.0"
+    "graphql": "16.8.0"
   },
   "engines": {
     "node": ">=12.22.0"
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!@thi.ng)"
+    ]
   }
 }

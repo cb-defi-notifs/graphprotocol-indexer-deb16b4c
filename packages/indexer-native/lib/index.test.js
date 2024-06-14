@@ -44,13 +44,13 @@ describe("Native Functions", () => {
     await expect(verifyReceipt(receipt1Tampered)).resolves.toEqual(false);
   });
 
-  test("Attestation", async () => {
+  test("Create attestation", async () => {
     // Taken from the attestation test in common-ts
     const mnemonic =
       "coyote tattoo slush ball cluster culture bleak news when action cover effort";
 
     const subgraphDeploymentID = utils.hexlify(
-      bs58.decode("QmTXzATwNfgGVukV1fX2T6xw9f6LAYRVWpsdXyRWzUR2H9").slice(2)
+      bs58.decode("QmTXzATwNfgGVukV1fX2T6xw9f6LAYRVWpsdXyRWzUR2H9").slice(2),
     );
     const privateKey = Wallet.fromMnemonic(mnemonic).privateKey;
 
@@ -61,7 +61,7 @@ describe("Native Functions", () => {
       chainId,
       disputeManagerAddress,
       privateKey,
-      subgraphDeploymentID
+      subgraphDeploymentID,
     );
 
     const expected = {
@@ -76,18 +76,31 @@ describe("Native Functions", () => {
       s: "0x7b24b529fcf92c9426179146bb7bfed6540043e2c30132e59d994a3cc718f2be",
     };
     await expect(
-      signer.createAttestation("request", "response")
+      signer.createAttestation("request", "response"),
     ).resolves.toEqual(expected);
+  });
+
+  test("Fail to initialize signer", async () => {
+    // Taken from the attestation test in common-ts
+    const mnemonic =
+      "coyote tattoo slush ball cluster culture bleak news when action cover effort";
+
+    const subgraphDeploymentID = utils.hexlify(
+      bs58.decode("QmTXzATwNfgGVukV1fX2T6xw9f6LAYRVWpsdXyRWzUR2H9").slice(2),
+    );
+    const privateKey = Wallet.fromMnemonic(mnemonic).privateKey;
+
+    const chainId = 1;
 
     // Ensure throwing errors works at least in one case when a parameter cannot be deserialized
     expect(
       () =>
         new NativeAttestationSigner(
           chainId,
-          "0xab",
+          "0xbad",
           privateKey,
-          subgraphDeploymentID
-        )
+          subgraphDeploymentID,
+        ),
     ).toThrow();
   });
 });

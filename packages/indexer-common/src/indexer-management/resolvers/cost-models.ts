@@ -95,8 +95,12 @@ export default {
 
   setCostModel: async (
     { costModel }: { deployment: string; costModel: GraphQLCostModel },
-    { models, features, dai }: IndexerManagementResolverContext,
+    { models, multiNetworks, dai }: IndexerManagementResolverContext,
   ): Promise<object> => {
+    if (!multiNetworks) {
+      throw Error('IndexerManagementClient must be in `network` mode to set cost models')
+    }
+
     const update = parseGraphQLCostModel(costModel)
 
     // Validate cost model
@@ -107,20 +111,28 @@ export default {
     } catch (err) {
       throw new Error(`Invalid cost model or variables: ${err.message}`)
     }
-
+    const network = multiNetworks.inner['eip155:1']
+    if (!network) {
+      throw new Error(
+        `Can't set cost model: Indexer Agent does not have Ethereum Mainnet network configured.`,
+      )
+    }
+    const injectDai = !!network.specification.dai.inject
     const [model] = await models.CostModel.findOrBuild({
       where: { deployment: update.deployment },
     })
-    model.deployment = costModel.deployment || model.deployment
-    model.model =
-      costModel.model !== null && costModel.model !== undefined
-        ? costModel.model
-        : model.model
+    // logger.info('Fetched current model', { current: model, update })
+    // model.set('deployment', update.deployment || model.deployment)
+    // // model.set('model', update.model || model.model)
+    // model.model = update.model || model.model
+    // logger.info('Merged models', { now: model })
+    model.deployment = update.deployment || model.deployment
+    model.model = update.model || model.model
 
     // Update the model variables (fall back to current value if unchanged)
     let variables = update.variables || model.variables
 
-    if (features.injectDai) {
+    if (injectDai) {
       const oldDai = getVariable(model.variables, 'DAI')
       const newDai = getVariable(update.variables, 'DAI')
 

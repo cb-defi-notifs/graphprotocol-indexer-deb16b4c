@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/ban-types */
-
 import { IndexerManagementResolverContext } from '../client'
 import { Logger } from '@graphprotocol/common-ts'
 import {
@@ -12,11 +11,15 @@ import {
   ActionType,
   ActionUpdateInput,
   IndexerManagementModels,
+  Network,
+  NetworkMapped,
   OrderDirection,
   validateActionInputs,
+  validateNetworkIdentifier,
 } from '@graphprotocol/indexer-common'
 import { literal, Op, Transaction } from 'sequelize'
 import { ActionManager } from '../actions'
+import groupBy from 'lodash.groupby'
 
 // Perform insert, update, or no-op depending on existing queue data
 // INSERT - No item in the queue yet targeting this deploymentID
@@ -48,9 +51,12 @@ async function executeQueueOperation(
 
   // Check for duplicated actions
   const duplicateActions = actionsAwaitingExecution.filter(
-    (a) => a.deploymentID === action.deploymentID,
+    (a) =>
+      a.deploymentID === action.deploymentID &&
+      a.protocolNetwork === action.protocolNetwork,
   )
   if (duplicateActions.length === 0) {
+    logger.trace('Inserting Action in database', { action })
     return [
       await models.Action.create(action, {
         validate: true,
@@ -64,7 +70,7 @@ async function executeQueueOperation(
       duplicateActions[0].status === action.status
     ) {
       // TODO: Log this only when update will actually change existing item
-      logger.info(
+      logger.trace(
         `Action found in queue that effects the same deployment as proposed queue action, updating existing action`,
         {
           actionInQueue: duplicateActions,
@@ -135,6 +141,7 @@ export default {
     })
     return await ActionManager.fetchActions(
       models,
+      null,
       filter,
       orderBy,
       orderDirection,
@@ -144,50 +151,80 @@ export default {
 
   queueActions: async (
     { actions }: { actions: ActionInput[] },
-    { actionManager, logger, networkMonitor, models }: IndexerManagementResolverContext,
+    { actionManager, logger, multiNetworks, models }: IndexerManagementResolverContext,
   ): Promise<ActionResult[]> => {
     logger.debug(`Execute 'queueActions' mutation`, {
       actions,
     })
 
-    await validateActionInputs(actions, actionManager, networkMonitor)
-
-    const alreadyQueuedActions = await ActionManager.fetchActions(models, {
-      status: ActionStatus.QUEUED,
-    })
-    const alreadyApprovedActions = await ActionManager.fetchActions(models, {
-      status: ActionStatus.APPROVED,
-    })
-    const actionsAwaitingExecution = alreadyQueuedActions.concat(alreadyApprovedActions)
-
-    // Fetch recently attempted actions
-    const last15Minutes = {
-      [Op.gte]: literal("NOW() - INTERVAL '15m'"),
+    if (!actionManager || !multiNetworks) {
+      throw Error('IndexerManagementClient must be in `network` mode to modify actions')
     }
 
-    const recentlyFailedActions = await ActionManager.fetchActions(models, {
-      status: ActionStatus.FAILED,
-      updatedAt: last15Minutes,
+    // Sanitize protocol network identifier
+    actions.forEach((action) => {
+      try {
+        action.protocolNetwork = validateNetworkIdentifier(action.protocolNetwork)
+      } catch (e) {
+        throw Error(`Invalid value for the field 'protocolNetwork'. ${e}`)
+      }
     })
 
-    const recentlySuccessfulActions = await ActionManager.fetchActions(models, {
-      status: ActionStatus.SUCCESS,
-      updatedAt: last15Minutes,
-    })
-
-    logger.trace('Recently attempted actions', {
-      recentlySuccessfulActions,
-      recentlyFailedActions,
-    })
-
-    const recentlyAttemptedActions = recentlyFailedActions.concat(
-      recentlySuccessfulActions,
+    // Let Network Monitors validate actions based on their protocol networks
+    await multiNetworks.mapNetworkMapped(
+      groupBy(actions, (action) => action.protocolNetwork),
+      (network: Network, actions: ActionInput[]) =>
+        validateActionInputs(actions, network.networkMonitor, logger),
     )
 
     let results: ActionResult[] = []
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await models.Action.sequelize!.transaction(async (transaction) => {
+      const alreadyQueuedActions = await ActionManager.fetchActions(models, transaction, {
+        status: ActionStatus.QUEUED,
+      })
+      const alreadyApprovedActions = await ActionManager.fetchActions(
+        models,
+        transaction,
+        {
+          status: ActionStatus.APPROVED,
+        },
+      )
+      const actionsAwaitingExecution = alreadyQueuedActions.concat(alreadyApprovedActions)
+
+      // Fetch recently attempted actions
+      const last15Minutes = {
+        [Op.gte]: literal("NOW() - INTERVAL '15m'"),
+      }
+
+      const recentlyFailedActions = await ActionManager.fetchActions(
+        models,
+        transaction,
+        {
+          status: ActionStatus.FAILED,
+          updatedAt: last15Minutes,
+        },
+      )
+
+      const recentlySuccessfulActions = await ActionManager.fetchActions(
+        models,
+        transaction,
+        {
+          status: ActionStatus.SUCCESS,
+          updatedAt: last15Minutes,
+        },
+      )
+
+      logger.trace('Recently attempted actions', {
+        recentlySuccessfulActions,
+        recentlyFailedActions,
+      })
+
+      const recentlyAttemptedActions = recentlyFailedActions.concat(
+        recentlySuccessfulActions,
+      )
+
       for (const action of actions) {
         const result = await executeQueueOperation(
           logger,
@@ -316,15 +353,40 @@ export default {
 
   executeApprovedActions: async (
     _: unknown,
-    { logger, actionManager }: IndexerManagementResolverContext,
-  ): Promise<ActionResult[]> => {
-    logger.debug(`Execute 'executeApprovedActions' mutation`)
-    return await actionManager.executeApprovedActions()
+    { logger: parentLogger, actionManager }: IndexerManagementResolverContext,
+  ): Promise<Action[]> => {
+    const logger = parentLogger.child({ function: 'executeApprovedActions' })
+    logger.trace(`Begin executing 'executeApprovedActions' mutation`)
+    if (!actionManager) {
+      throw Error('IndexerManagementClient must be in `network` mode to modify actions')
+    }
+    const result: NetworkMapped<Action[]> = await actionManager.multiNetworks.map(
+      async (network: Network) => {
+        logger.debug(`Execute 'executeApprovedActions' mutation`, {
+          protocolNetwork: network.specification.networkIdentifier,
+        })
+        try {
+          return await actionManager.executeApprovedActions(network)
+        } catch (error) {
+          logger.error('Failed to execute approved actions for network', {
+            protocolNetwork: network.specification.networkIdentifier,
+            error,
+          })
+          return []
+        }
+      },
+    )
+    return Object.values(result).flat()
   },
 }
 
 // Helper function to assess equality among a enqueued and a proposed actions
 function compareActions(enqueued: Action, proposed: ActionInput): boolean {
+  // actions are not the same if they target different protocol networks
+  if (enqueued.protocolNetwork !== proposed.protocolNetwork) {
+    return false
+  }
+
   // actions are not the same if they target different deployments
   if (enqueued.deploymentID !== proposed.deploymentID) {
     return false
